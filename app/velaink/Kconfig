@@ -1,0 +1,12 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config LVX_USE_DEMO_CONTEST2026_388_VELAINK
+	bool "Contest 2026 team 388 velaink stroke-to-gcode engine"
+	default n
+	---help---
+		VelaInk (墨灵) stroke compiler running on openvela: takes normalized
+		strokes, smooths them (Catmull-Rom), resamples by arc length and
+		emits GRBL-flavoured G-code for the CoreXY writing machine.

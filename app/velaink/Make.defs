@@ -1,0 +1,9 @@
+############################################################################
+# apps/packages/demos/contest2026_388_velaink/Make.defs
+#
+# SPDX-License-Identifier: Apache-2.0
+############################################################################
+
+ifneq ($(CONFIG_LVX_USE_DEMO_CONTEST2026_388_VELAINK),)
+CONFIGURED_APPS += $(APPDIR)/packages/demos/contest2026_388_velaink
+endif
