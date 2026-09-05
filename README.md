@@ -1,148 +1,182 @@
-# contest2026_388_ajiejie
+# 墨灵 VelaInk — AI 创意书写绘画机器人
 
-👋 欢迎参加 **2026 首届 openvela AI 硬件开发者大赛**！
+> 2026 首届 openvela AI 硬件开发者大赛 · AI 硬件产品创新赛道 · 388 队
 
-这是组委会为你的队伍创建的**专属参赛仓库**（本仓为样例/模板，队伍编号 `388`；你看到的将是你自己的 `contest2026_<编号>_<队伍名>`）。比赛期间，你的全部参赛代码、打包产物与 AI Coding 日志都提交到这里。
+## 一句话
 
-> 本仓既是「代码仓」，又内置了一键拉取整套 openvela 工程的 `repo` 清单（manifest）。你只需跟它打交道，**自始至终只动一个文件夹**。
+**过去的写字机是"人在操作机器"，墨灵是"机器理解人"。**
 
----
-
-## 一、先读这些官方文档
-
-**通用（所有赛道必读）：**
-
-| 文档                                                                                                                                     | 用途                                           |
-| ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| [《大赛总览》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/contest_overview.md)                        | 赛道、流程、评分、资源，建议先通读             |
-| [《参赛代码提交指南》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/code_submission_guide.md)           | 仓库获取、提交流程、时间与权限（**以此为准**） |
-| [《AI Coding 日志归集与提交手册》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_coding_log_guide.md) | 如何导出 AI 对话日志并提交到 `logs/`           |
-
-**按你的赛道选读（三选一）：**
-
-| 赛道                  | 教程导航                                                                                                                                                 |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 快应用 / 手表应用创新 | [快应用教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/quickapp/quickapp_guide_index.md)                         |
-| AI 硬件产品创新       | [AI 硬件赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_hardware/ai_hardware_guide_index.md)              |
-| 新硬件适配            | [新硬件适配赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/hardware_porting/hardware_porting_guide_index.md) |
+对着它说一句"写一句生日祝福给妈妈"，它就想清楚、写下来、落笔成字。不需要学软件，不需要手工描图。
 
 ---
 
-## 二、第一步：拉取完整工程
+## 一、要解决什么问题
 
-用组委会提供的命令一键拉取「openvela 全量源码 + 你的专属仓」：
+市面上的写字机（如本项目使用的大鱼 DayuWriter V2.21 Pro）本质是**执行设备**——要出成品，用户得先在 PC 上用绘图软件画好、导入专用上位机、调参、下发。整个过程门槛高、链路长，非技术用户基本被劝退。
+
+墨灵把这段链路压缩成一句自然语言。用户只表达"想要什么"，剩下的理解、构图、生成笔迹、控制落笔全部由端侧完成。
+
+| | 传统写字机 | 墨灵 VelaInk |
+|---|---|---|
+| 输入 | 手工绘制 / 导入矢量图 | 自然语言 / 语音 |
+| 依赖 | PC + 专用上位机 | 完全离线，设备本体 |
+| 门槛 | 需掌握绘图与上位机软件 | 会说话就会用 |
+| 硬件 | 需专用配套 | **存量写字机零改造** |
+| 隐私 | 云端处理 | **全离线，不出设备** |
+
+---
+
+## 二、系统架构：大脑 + 实时层 + 执行层
+
+```
+┌───────────────────────────────────────────────────────┐
+│ ① AI 大脑 · Linux (Fedora 44) on LogicPi A1           │
+│    语音识别 → 端侧 LLM 理解意图 → 生成 SVG 创意草图    │
+│    NPU (adla) 跑视觉小模型：笔尖检测 / 纸面定位         │
+└────────────────────┬──────────────────────────────────┘
+                     │  VELAINK/1 协议（归一化笔迹，纯文本）
+┌────────────────────▼──────────────────────────────────┐
+│ ② 实时层 · openvela（运行于 A1 的 KVM 虚拟机）          │
+│    velaink：平滑 → 等弧长重采样 → 限位缩放 → G-code    │
+│    硬实时、确定性，不因大模型推理抖动而丢步             │
+└────────────────────┬──────────────────────────────────┘
+                     │  G-code（GRBL 1.1f，逐行等待 ok）
+┌────────────────────▼──────────────────────────────────┐
+│ ③ 执行层 · GRBL 控制板 (MKS DLC V2.0)                  │
+│    CoreXY 运动学解算 + 步进驱动 + Z 轴抬落笔            │
+└───────────────────────────────────────────────────────┘
+```
+
+### 为什么是"Linux + openvela"异构，而不是只跑一个
+
+- **NPU SDK 只提供 Linux 版本** —— 要用上 A311Y2 的 NPU 算力，必须有 Linux
+- **运动控制要确定性** —— LLM 推理会占用大量 CPU 并带来抖动，若由同一个系统直接驱动步进电机，必然丢步
+- **openvela 的设计初衷正是如此** —— 异构多核、RPC、共享内存是 openvela 官方的核心能力，本项目把它用在真实产品场景里
+
+---
+
+## 三、技术亮点
+
+### 1. 笔迹编译器（openvela 侧，`app/velaink`）
+
+从 AI 得到的原始路径不能直接下发给机器——点太密会卡、太疏会失形、速度不均会抖动、越界会撞机。墨灵做了四层处理：
+
+- **Catmull-Rom 样条插值** —— 把稀疏控制点变成平滑笔迹
+- **等弧长重采样** —— 保证相邻点间距一致，进给速度恒定，消除抖动与停顿
+- **归一化坐标 + 等比缩放居中** —— 同一套笔迹适配任意幅面，不被拉伸
+- **越界即中止保护** —— 任一点超出工作区立即报错停机，绝不把机器送出轨
+
+### 2. 松耦合的笔迹协议（VELAINK/1）
+
+纯文本、肉眼可调试、对丢包不敏感，且**能容忍 LLM 的多余输出**（未知行直接忽略）：
+
+```
+VELAINK/1
+S              ← 抬笔，开始新笔画
+P 0.15 0.15    ← 归一化点 (0.0~1.0)
+P 0.85 0.15
+E              ← 结束，立即编译并下发
+```
+
+### 3. 存量硬件零改造
+
+只输出标准 G-code（G21/G90/G94，Z 轴抬落笔），任何 GRBL 1.1f 写字机都能直接用。CoreXY 运动学解算交给下位控制板，符合"大脑负责决策、小脑负责执行"的分工。
+
+### 4. openvela 生态贡献：LogicPi A1 板级适配
+
+LogicPi A1（Amlogic A311Y2 / S905D5）此前未被 openvela 支持。本项目：
+
+- 建立可用的板级配置（官方模板自带的 `configs/nsh` 未指定架构，无法编译）
+- 梳理板载资源：UPDATE 按键（SARADC CH3）、SD 卡槽、RGMII 网口、调试串口（uart_B）
+- 打通构建与模拟器验证流程
+- 沉淀完整构建技能，供后续开发者复用
+
+---
+
+## 四、硬件清单
+
+| 部件 | 型号 | 说明 |
+|---|---|---|
+| 主控 | 逻极派 LogicPi A1 | Amlogic A311Y2，4×A73 + 2×A53，含 NPU |
+| 写字机 | 大鱼 DayuWriter V2.21 Pro | MKS DLC V2.0 控制板 / GRBL 1.1f / CoreXY / Z 轴抬笔 |
+| 工作幅面 | 200 × 196 mm | 笔迹编译器按此标定 |
+| 供电 | 12V ≥2A（A1） | **与写字机电源严格分离**，避免电机尖峰串扰 USB |
+
+---
+
+## 五、仓库结构
+
+```
+contest2026_388_ajiejie/
+├── app/velaink/           # openvela 侧笔迹执行引擎（C）
+│   ├── stroke.c/h         #   笔迹容器、Catmull-Rom 平滑、等弧长重采样
+│   ├── gcode.c/h          #   机器参数、坐标映射、限位保护、G-code 生成
+│   ├── protocol.c/h       #   VELAINK/1 协议解析
+│   └── velaink_main.c     #   NSH 命令：info / demo / recv / send
+├── board/contest_board/   # 板级适配（含可用的 velaink-arm64 配置）
+├── linux/                 # AI 大脑侧（Python）
+│   ├── velaink_brain.py   #   SVG → 归一化笔迹 → VELAINK/1
+│   └── README.md          #   三层架构说明与联调方法
+├── tools/
+│   └── export_workbuddy_logs.py   # AI 开发日志导出（含自动脱敏）
+└── logs/<github_login>/   # AI 编程过程日志（官方校验通过）
+```
+
+---
+
+## 六、快速开始
+
+### 编译 openvela 镜像
 
 ```bash
-repo init -u https://github.com/open-vela/contest2026_388_ajiejie \
-  -b dev-ai-contest-2026 -m contest2026_388_ajiejie.xml
-repo sync -c -j8
+cd openvela
+./build.sh vendor/openvela/boards/contest2026_388_board/configs/velaink-arm64/ --cmake -j8
+./emulator.sh cmake_out/contest2026_388_board_velaink-arm64/ -no-window -no-audio
+# 成功标志：出现 NuttShell 与 goldfish-armv8a-ap> 提示符
 ```
 
-同步后，你的整个仓库位于工作区的 `contest2026_388_ajiejie/`，openvela 全量源码在外层（`nuttx/`、`apps/`、`packages/`、`vendor/` 等）。
+### 在 openvela 中使用
 
----
-
-## 三、第二步：在哪里写代码
-
-**只在自己的仓目录 `contest2026_388_ajiejie/` 里开发。** 不同作品形态放在对应子目录，manifest 会通过 `<linkfile>` 把它们**软链**到 openvela 编译树该在的位置——你不用手动 copy：
-
-| 作品形态 | 你的代码放这里             | 系统自动映射到                                 |
-| -------- | -------------------------- | ---------------------------------------------- |
-| 应用     | `app/hello_app/`           | `packages/demos/contest2026_388_hello_app`     |
-| 快应用   | `quickapp/hello_quickapp/` | `packages/apps/contest2026_388_hello_quickapp` |
-| 板级适配 | `board/contest_board/`     | `vendor/openvela/boards/contest2026_388_board` |
-
-> 用不到的形态目录可以删掉；新增作品时按同样规则加子目录，并在 `contest2026_388_ajiejie.xml` 里补一条 `<linkfile>` 映射即可。**生产仓库（packages/nuttx/vendor 等）零改动。**
-
-建议仓库目录约定（便于评委定位）：
-
-```text
-app/ | quickapp/ | board/   # 你的作品代码
-logs/                       # AI Coding 日志（主动导出后提交，格式见 logs/README.md）
-README.md                   # 作品说明（提交前请改成你自己的，见第六节）
+```sh
+velaink info                    # 查看机器参数
+velaink demo 0.6                # 生成示例笔迹的 G-code（步长 0.6mm）
+velaink recv /dev/ttyS1 /dev/ttyS2   # 从串口收笔迹，编译后下发至写字机
+velaink send out.nc /dev/ttyS2  # 逐行下发 G-code，等待 GRBL 回 ok
 ```
 
-> 仓内附带了一个 `.gitignore.example`，给出了**编译产物**等不需要进仓的文件示例。如需启用，`cp .gitignore.example .gitignore` 后按需增删即可。**注意 `logs/` 下最终导出的 AI Coding 日志必须提交，不要忽略。**
->
-> `logs/` 的目录结构与提交格式见 [logs/README.md](logs/README.md)。
-
----
-
-## 四、第三步：编译与运行
-
-编译/运行步骤随作品形态不同而不同，请参考你所在赛道的教程导航：
-
-- 快应用 / 手表应用：[快应用教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/quickapp/quickapp_guide_index.md)（含模拟器与开发板部署）。
-- AI 硬件产品创新：[AI 硬件赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_hardware/ai_hardware_guide_index.md)（环境搭建、编译烧录、Skill 开发）。
-- 新硬件适配：[新硬件适配赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/hardware_porting/hardware_porting_guide_index.md)（BSP 移植、最小 NSH 基线）。
-
-子目录已通过 manifest 中的 `<linkfile>` 软链进 openvela 编译树，因此构建在 openvela 工作区**根目录**（即你这个仓的上一级）进行。openvela 使用 `build.sh` 作为统一入口，接收一个 **board config 路径**作为参数：
+### 本地全链路联调（无需硬件）
 
 ```bash
-# 进入 openvela 工作区根目录（你的仓的上一级）
-cd ..
+# 大脑侧：SVG → 笔迹协议
+python3 linux/velaink_brain.py --demo > strokes.txt
 
-# 通用语法：第一个参数是 board config 路径，第二个参数可以是 menuconfig / distclean 等
-./build.sh <board-config-path> [menuconfig|distclean] [-j8]
+# 实时层：笔迹协议 → G-code
+gcc -O1 -o velaink_host app/velaink/*.c -lm
+./velaink_host recv /dev/stdin out.nc < strokes.txt
 ```
 
-> 具体的 board config 路径、目标产物、模拟器/真机部署方式请以你所在赛道的教程导航为准。本仓 `app/` `quickapp/` `board/` 三个示例骨架对应的 Kconfig 选项可通过 `menuconfig` 启用。
+已验证：内置示例生成 146 个归一化点，编译为 **159 行合法 G-code**，闭合心形，全部坐标落在 200×196mm 工作区内。
 
 ---
 
-## 五、第四步：提交作品
+## 七、开发进度
 
-1. **fork** 你的专属仓 → 开发 → `git commit` 并推送 → 向专属仓发起 **Pull Request**，可**自行 review 并合入**（无需等组委会）。
-2. **AI Coding 日志**：与 AI 工具的对话会自动记录到本机 staging（不会自动上传），需你**主动导出/打包**选定会话到仓内 `logs/` 目录后一并提交。详见[《AI Coding 日志归集与提交手册》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_coding_log_guide.md)。
-3. 若需改动 **nuttx 等公共仓库**，不在本仓改，而是 fork 对应公共仓、以 PR 提交到 `dev-ai-contest-2026` 分支，由组委会 review 后合入。
-
-> ⏰ **提交作品截止：9 月 20 日**。截止后统一收回 push 权限，仍可查看 / clone。
->
-> 获奖后再按要求将作品 PR 至 openvela 上游对应仓库（走标准 PR + CI 流程）。
-
-### 关于 PR 与 CLA
-
-- 本仓所有改动通过 **Pull Request** 合入（分支保护强制，可自行合入自己的 PR）。
-- 首次贡献需在[**官网签署 CLA**](https://openvela.com/#/community/cla)；PR 上会自动跑 `cla/signature` 检查，在官网签署成功后，在 PR 评论 `/check-cla` 复检即可通过。
+| 阶段 | 状态 |
+|---|---|
+| openvela 环境搭建、构建与模拟器跑通 | ✅ |
+| 笔迹编译器 + 笔迹协议 + AI 大脑脚本全链路 | ✅ |
+| 板级配置（LogicPi A1 适配） | ✅ |
+| AI 编程日志归集（官方校验通过） | ✅ |
+| 真机 NPU 推理、语音识别接入 | 进行中 |
+| openvela 虚拟机与 Linux 的 virtio-serial 通道 | 进行中 |
+| 整机联调与演示视频 | 待完成 |
 
 ---
 
-## 六、提交前：把本 README 改成你的作品说明
+## 八、致谢与声明
 
-本文件目前是组委会给的**使用说明书**。**作品提交前，请把它替换成你自己作品的说明**，方便评委快速了解你做了什么、怎么跑起来。建议至少包含以下内容：
+- 赛事主办：openvela 社区
+- 硬件支持：九望科技（逻极派 LogicPi A1）
+- 本项目 AI 编程过程完整记录于 `logs/`，可用官方工具 `render-log.py` 查看
 
-```markdown
-# <你的作品名>
-
-## 一、作品简介
-<一句话/一段话说明这个作品是什么、解决什么问题、亮点在哪>
-
-## 二、选题方向
-<快应用 / 手表应用创新 ｜ AI 硬件产品创新 ｜ 新硬件适配 ｜ 自定方向，并简述理由>
-
-## 三、目录结构
-<列出你这个仓里各目录/文件的作用，例如：>
-- `app/xxx/`        — <说明>
-- `board/xxx/`      — <说明>
-- `quickapp/xxx/`   — <说明>
-- `logs/`           — AI Coding 日志
-- `docs/` 或其他    — <说明>
-
-## 四、运行方式
-<拉取工程后，如何编译、烧录/部署、运行的完整步骤；最好能让评委照着一步步复现>
-
-## 五、AI Coding 使用说明
-<说明本作品如何借助 AI 辅助开发：
-- 在需求拆解 / 方案设计 / 编码 / 调试 / 文档等环节如何与 AI 协作；
-- AI 对开发效率或质量带来的实际帮助。
-完整对话日志见 logs/ 目录>
-```
-
-> 提示：将会根据「作品本身 + 你的 README 说明 + `logs/` 里的 AI Coding 日志」来理解和评估你的作品，README 写清楚很重要。
-
----
-
-## 附：仓库命名规范
-
-`contest2026_<编号>_<队伍名>` — 编号三位零填充；队名 slug（全小写、英文/拼音、连字符）。例：`contest2026_388_ajiejie`。
-（仓库由组委会统一创建，**每队仅一个仓**，无需自行命名。）
+Licensed under the Apache License, Version 2.0.
