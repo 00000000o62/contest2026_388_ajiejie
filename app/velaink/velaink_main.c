@@ -4,9 +4,13 @@
  * 墨灵 VelaInk — openvela 侧笔迹执行器
  *
  * 命令：
- *   velaink demo [step_mm]   生成示例笔迹（一颗心）并输出 G-code
- *   velaink info             打印机器参数
- *   velaink send <gcode> <dev>  把 G-code 文件下发到串口（GRBL 握手）
+ *   velaink info                     打印机器参数
+ *   velaink demo [step_mm]           生成示例笔迹（一颗心）并输出 G-code
+ *   velaink recv <indev> [outdev]    从串口/文件接收笔迹并编译下发
+ *   velaink send <gcode> <dev>       把 G-code 文件下发到串口（GRBL 握手）
+ *
+ * 典型链路：
+ *   Linux 大脑 --(VELAINK/1 协议)--> openvela velaink --(G-code)--> GRBL 板
  *
  * SPDX-License-Identifier: Apache-2.0
  ****************************************************************************/
@@ -18,14 +22,17 @@
 #include <unistd.h>
 #include "stroke.h"
 #include "gcode.h"
+#include "protocol.h"
 
 static void usage(void)
 {
+  printf("VelaInk - stroke to G-code engine\n");
   printf("Usage:\n");
   printf("  velaink info\n");
-  printf("  velaink demo [step_mm]      # default step 0.5mm\n");
-  printf("  velaink send <file> <dev>   # e.g. velaink send /tmp/demo.nc "
-         "/dev/ttyS1\n");
+  printf("  velaink demo [step_mm]            # default step 0.5mm\n");
+  printf("  velaink recv <indev> [outdev]     # e.g. velaink recv "
+         "/dev/ttyS1 /dev/ttyS2\n");
+  printf("  velaink send <gcodefile> <dev>    # stream G-code to GRBL\n");
 }
 
 static int cmd_info(void)
@@ -77,8 +84,6 @@ static int cmd_demo(float step_mm)
       return -1;
     }
 
-  /* 逐笔画：平滑 -> 等距重采样 */
-
   for (s = 0; s < raw.nstrokes; s++)
     {
       if (raw.strokes[s].npts < 2)
@@ -122,19 +127,88 @@ static int cmd_demo(float step_mm)
     {
       printf("; generated %d gcode lines\n", ret);
 
-      ret = velaink_gcode_to_file("/tmp/velaink_demo.nc", &drawn, &m);
-      if (ret > 0)
+      if (velaink_gcode_to_file("/tmp/velaink_demo.nc", &drawn, &m) > 0)
         {
           printf("; saved /tmp/velaink_demo.nc\n");
-        }
-      else
-        {
-          printf("; note: could not save /tmp/velaink_demo.nc\n");
         }
     }
 
   velaink_drawing_free(&drawn);
   velaink_drawing_free(&raw);
+  return ret < 0 ? -1 : 0;
+}
+
+/* 接收笔迹 -> 编译 G-code -> 下发 */
+static int cmd_recv(const char *indev, const char *outdev)
+{
+  struct velaink_drawing drawing;
+  struct velaink_machine m;
+  FILE                  *in;
+  FILE                  *out;
+  int                    npts = 0;
+  int                    ret;
+  int                    infd = -1;
+
+  velaink_machine_default(&m);
+
+  infd = open(indev, O_RDONLY);
+  if (infd < 0)
+    {
+      printf("velaink: cannot open input %s\n", indev);
+      return -1;
+    }
+
+  in = fdopen(infd, "r");
+  if (!in)
+    {
+      printf("velaink: fdopen failed\n");
+      close(infd);
+      return -1;
+    }
+
+  printf("velaink: waiting for strokes on %s ...\n", indev);
+  fflush(stdout);
+
+  ret = velaink_recv_stream(in, &drawing, &npts);
+  fclose(in);
+
+  if (ret <= 0)
+    {
+      printf("velaink: no complete drawing received (%d)\n", ret);
+      return -1;
+    }
+
+  printf("velaink: received %d strokes / %d points\n", drawing.nstrokes, npts);
+
+  out = stdout;
+  if (outdev)
+    {
+      out = fopen(outdev, "w");
+      if (!out)
+        {
+          printf("velaink: cannot open output %s, fallback to stdout\n",
+                 outdev);
+          out = stdout;
+        }
+    }
+
+  ret = velaink_gcode_emit(out, &drawing, &m);
+  if (out != stdout)
+    {
+      fflush(out);
+      fclose(out);
+    }
+
+  if (ret < 0)
+    {
+      printf("velaink: gcode failed (%d)\n", ret);
+    }
+  else
+    {
+      printf("velaink: emitted %d gcode lines\n", ret);
+    }
+
+  velaink_drawing_free(&drawing);
   return ret < 0 ? -1 : 0;
 }
 
@@ -169,19 +243,13 @@ static int cmd_send(const char *file, const char *dev)
     {
       size_t len = strlen(line);
 
-      if (len == 0)
+      if (len == 0 || line[0] == ';')
         {
           continue;
         }
 
-      if (line[0] == ';')
-        {
-          continue; /* 跳过注释 */
-        }
-
       write(fd, line, len);
 
-      /* 等待 ok */
       {
         char  buf[64];
         int   got = 0;
@@ -246,6 +314,17 @@ int main(int argc, char *argv[])
         }
 
       return cmd_demo(step);
+    }
+
+  if (strcmp(argv[1], "recv") == 0)
+    {
+      if (argc < 3)
+        {
+          usage();
+          return 1;
+        }
+
+      return cmd_recv(argv[2], (argc > 3) ? argv[3] : NULL);
     }
 
   if (strcmp(argv[1], "send") == 0)

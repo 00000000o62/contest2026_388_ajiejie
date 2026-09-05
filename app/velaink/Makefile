@@ -8,6 +8,6 @@ include $(APPDIR)/Make.defs
 
 APPNAME = velaink
 MAINSRC = velaink_main.c
-CSRCS   = stroke.c gcode.c
+CSRCS   = stroke.c gcode.c protocol.c
 
 include $(APPDIR)/Application.mk

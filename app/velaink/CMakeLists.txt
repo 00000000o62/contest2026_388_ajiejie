@@ -2,6 +2,6 @@
 if(CONFIG_LVX_USE_DEMO_CONTEST2026_388_VELAINK)
   nuttx_add_application(
     NAME velaink
-    SRCS velaink_main.c stroke.c gcode.c
+    SRCS velaink_main.c stroke.c gcode.c protocol.c
     STACKSIZE 4096)
 endif()
