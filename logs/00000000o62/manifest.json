@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "team_id": "contest2026_388_ajiejie",
+  "github_login": "00000000o62",
+  "generator": "workbuddy-export@1.0.0 (export_workbuddy_logs.py)",
+  "sessions": [
+    {
+      "session_id": "d81cdd54-78c6-4947-8596-00601fe7b352",
+      "tool": "claude-code",
+      "started_at": "2026-09-03T10:49:49.443000Z",
+      "last_event_at": "2026-09-03T13:47:00.059000Z",
+      "event_count": 686,
+      "file_path": "logs/00000000o62/2026-09-03/claude-code__d81cdd54-78c6-4947-8596-00601fe7b352.jsonl",
+      "collection_mode": "cli",
+      "health": "ok"
+    },
+    {
+      "session_id": "d81cdd54-78c6-4947-8596-00601fe7b352",
+      "tool": "claude-code",
+      "started_at": "2026-09-04T00:47:31.461000Z",
+      "last_event_at": "2026-09-04T14:15:34.722000Z",
+      "event_count": 1486,
+      "file_path": "logs/00000000o62/2026-09-04/claude-code__d81cdd54-78c6-4947-8596-00601fe7b352.jsonl",
+      "collection_mode": "cli",
+      "health": "ok"
+    },
+    {
+      "session_id": "d81cdd54-78c6-4947-8596-00601fe7b352",
+      "tool": "claude-code",
+      "started_at": "2026-09-05T03:28:39.511000Z",
+      "last_event_at": "2026-09-05T04:46:50.409000Z",
+      "event_count": 368,
+      "file_path": "logs/00000000o62/2026-09-05/claude-code__d81cdd54-78c6-4947-8596-00601fe7b352.jsonl",
+      "collection_mode": "cli",
+      "health": "ok"
+    }
+  ],
+  "updated_at": "2026-09-05T04:46:55.843757Z"
+}
