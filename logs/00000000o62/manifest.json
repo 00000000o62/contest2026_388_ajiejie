@@ -28,12 +28,12 @@
       "session_id": "d81cdd54-78c6-4947-8596-00601fe7b352",
       "tool": "claude-code",
       "started_at": "2026-09-05T03:28:39.511000Z",
-      "last_event_at": "2026-09-05T04:46:50.409000Z",
-      "event_count": 368,
+      "last_event_at": "2026-09-05T04:48:55.872000Z",
+      "event_count": 383,
       "file_path": "logs/00000000o62/2026-09-05/claude-code__d81cdd54-78c6-4947-8596-00601fe7b352.jsonl",
       "collection_mode": "cli",
       "health": "ok"
     }
   ],
-  "updated_at": "2026-09-05T04:46:55.843757Z"
+  "updated_at": "2026-09-05T04:49:01.076343Z"
 }

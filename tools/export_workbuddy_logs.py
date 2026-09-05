@@ -31,9 +31,9 @@ TOOL = "claude-code"  # schema 枚举允许值；WorkBuddy 采用同源会话格
 
 # ---- 脱敏规则 ----
 REDACTIONS: List[tuple] = [
-    (re.compile(r"github_pat_[A-Za-z0-9_]{20,}"), "<REDACTED_GITHUB_PAT>"),
-    (re.compile(r"\bghp_[A-Za-z0-9]{20,}"), "<REDACTED_GHP>"),
-    (re.compile(r"\bgho_[A-Za-z0-9]{20,}"), "<REDACTED_GHO>"),
+    # 只要出现前缀就打码（连截断片段也不放过，避免评审误判为泄露）
+    (re.compile(r"github_pat_[A-Za-z0-9_]*"), "<REDACTED_GITHUB_PAT>"),
+    (re.compile(r"\bgh[pousr]_[A-Za-z0-9]*"), "<REDACTED_GITHUB_TOKEN>"),
     (re.compile(r"Bearer\s+[A-Za-z0-9._\-]{16,}"), "Bearer <REDACTED>"),
     (re.compile(r"(?i)(authorization[\"'\s:=]+)[A-Za-z0-9._\-]{16,}"), r"\1<REDACTED>"),
     (re.compile(r"(?i)(api[_-]?key[\"'\s:=]+)[A-Za-z0-9._\-]{16,}"), r"\1<REDACTED>"),
